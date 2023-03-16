@@ -1,0 +1,72 @@
+node{
+    stage("Git Clone"){
+git branch: 'developer', credentialsId: 'GIT_HUB_CREDENTIALS', url: 'https://github.com/yeatun/CRUDOPERATIONAPI-Angular-.git'
+}
+
+  stage("Restore packages"){
+            sh "dotnet restore ${workspace}/SuperVillainApi/ContactList.Api/ContactList.Api.csproj"
+    }
+    
+    stage('Clean'){
+            sh "dotnet clean ${workspace}/SuperVillainApi/ContactList.Api/ContactList.Api.csproj"
+    }
+   
+    stage('Build')
+        {
+             sh "dotnet build --configuration Release ${workspace}/SuperVillainApi/ContactList.Api/ContactList.Api.csproj"
+        }
+    stage('Pack')
+   {
+           sh "dotnet pack --no-build --output nupkgs ${workspace}/SuperVillainApi/ContactList.Api/ContactList.Api.csproj"
+    }
+      stage("Docker build"){
+        
+         dir("SuperVillainApi") {
+             sh 'docker version'
+           sh 'docker build . -t 01521433811/backend-project-api -f ContactList.Api/Dockerfile'
+           sh 'docker image list'
+           sh 'docker tag 01521433811/backend-project-api:latest 01521433811/backend-project-api:$BUILD_NUMBER'
+           
+        }
+        
+    }
+    stage("Docker Login"){
+withCredentials([string(credentialsId: 'DOCKER_HUB_PASSWORD', variable: 'PASSWORD')]) {
+sh 'docker login -u 01521433811 -p $PASSWORD'
+}
+}
+stage("Push Image to Docker Hub"){
+sh 'docker push 01521433811/backend-project-api:$BUILD_NUMBER'
+}
+
+stage("SSH Into master node") {
+
+    def remote = [:]
+
+remote.name = 'ansible-master'
+remote.host = '192.168.159.21'
+remote.user = 'pabel'
+remote.password = 'pabel'
+remote.allowAnyHosts = true
+
+stage('Delete test1.yaml file') {
+sshCommand remote: remote, command: "echo pabel | sudo -S rm test1.yaml"
+}
+
+  stage('Copy test1.yaml onto master') {
+sshPut remote: remote, from: 'test1.yaml', into: '.'
+}
+stage('Update Image Tag') {
+sshCommand remote: remote, command: "sed -ie s/TAG_NUMBER/$BUILD_NUMBER/g test1.yaml"
+}
+stage('Deploy Dotnet API') {
+sshCommand remote: remote, command: "kubectl apply -f test1.yaml"
+}
+
+
+
+}
+  
+}
+
+

@@ -1,0 +1,54 @@
+node{
+    stage("Git Clone"){
+git branch: 'develop', credentialsId: 'GIT_HUB_CREDENTIALS', url: 'https://github.com/yeatun/SuperVillainUI.git'
+}
+
+  
+      stage("Docker build"){
+        
+        
+           sh 'docker version'
+           sh 'docker build . -t 01521433811/frontend-project'
+           sh 'docker image list'
+           sh 'docker tag 01521433811/frontend-project:latest 01521433811/frontend-project:$BUILD_NUMBER'
+           
+ 
+        
+    }
+    stage("Docker Login"){
+withCredentials([string(credentialsId: 'DOCKER_HUB_PASSWORD', variable: 'PASSWORD')]) {
+sh 'docker login -u 01521433811 -p $PASSWORD'
+}
+}
+stage("Push Image to Docker Hub"){
+sh 'docker push 01521433811/frontend-project:$BUILD_NUMBER'
+}
+
+stage("SSH Into master node") {
+
+    def remote = [:]
+
+remote.name = 'ansible-master'
+remote.host = '192.168.159.21'
+remote.user = 'pabel'
+remote.password = 'pabel'
+remote.allowAnyHosts = true
+
+stage('Delete angular.yaml file') {
+sshCommand remote: remote, command: "echo pabel | sudo -S rm angular.yaml"
+}
+
+  stage('Copy angular.yaml onto master') {
+sshPut remote: remote, from: 'angular.yaml', into: '.'
+}
+stage('Update Image Tag') {
+sshCommand remote: remote, command: "sed -ie s/TAG_NUMBER/$BUILD_NUMBER/g angular.yaml"
+}
+stage('Deploy UI') {
+sshCommand remote: remote, command: "kubectl apply -f angular.yaml"
+}
+
+
+}
+  
+}
